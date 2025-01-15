@@ -50,7 +50,6 @@ description: 本文档介绍了 Apache APISIX mqtt-proxy 插件的信息，通�
         http: 'radixtree_uri'
         ssl: 'radixtree_sni'
     stream_proxy:                 # TCP/UDP proxy
-      only: false                 # 如需 HTTP 与 Stream 代理同时生效，需要增加该键值
       tcp:                        # TCP proxy port list
         - 9100
     dns_resolver:
@@ -61,9 +60,19 @@ description: 本文档介绍了 Apache APISIX mqtt-proxy 插件的信息，通�
 
 你可以创建一个 stream 路由并启用 `mqtt-proxy` 插件。
 
+:::note
+
+您可以这样从 `config.yaml` 中获取 `admin_key` 并存入环境变量：
+
+```bash
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+```
+
+:::
+
 ```shell
 curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+-H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "plugins": {
         "mqtt-proxy": {
@@ -88,7 +97,7 @@ curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 \
 
 ```shell
 curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+-H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "plugins": {
         "mqtt-proxy": {
@@ -131,7 +140,7 @@ Stream 代理可以使用 TCP 连接并且支持 TLS。请参考 [如何通过 t
 
 ```shell
 curl 127.0.0.1:9180/apisix/admin/stream_routes/1 \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+-H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "plugins": {
         "mqtt-proxy": {
@@ -155,11 +164,11 @@ curl 127.0.0.1:9180/apisix/admin/stream_routes/1 \
 
 :::
 
-## 禁用插件
+## 删除插件
 
-当你需要禁用该插件时，可以通过以下命令删除相应的 JSON 配置，APISIX 将会自动重新加载相关配置，无需重启服务：
+当你需要删除该插件时，可以通过以下命令删除相应的 JSON 配置，APISIX 将会自动重新加载相关配置，无需重启服务：
 
 ```shell
 curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X DELETE
+-H "X-API-KEY: $admin_key" -X DELETE
 ```

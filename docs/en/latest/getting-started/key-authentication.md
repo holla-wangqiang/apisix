@@ -28,6 +28,7 @@ APISIX has a flexible plugin extension system and a number of existing plugins f
 - [LDAP](https://apisix.apache.org/docs/apisix/plugins/ldap-auth/)
 - [Open Policy Agent (OPA)](https://apisix.apache.org/docs/apisix/plugins/opa/)
 - [Forward Authentication](https://apisix.apache.org/docs/apisix/plugins/forward-auth/)
+- [Multiple Authentications](https://apisix.apache.org/docs/apisix/plugins/multi-auth/)
 
 In this tutorial, you will create a _consumer_ with _key authentication_, and learn how to enable and disable key authentication.
 
@@ -48,8 +49,8 @@ Key authentication is a relatively simple but widely used authentication approac
 
 ### Prerequisite(s)
 
-1. Complete [Get APISIX](../README) to install APISIX.
-2. Complete [Configure Routes](../configure-routes#what-is-a-route).
+1. Complete [Get APISIX](./README.md) to install APISIX.
+2. Complete [Configure Routes](./configure-routes.md#what-is-a-route).
 
 ### Create a Consumer
 
@@ -73,11 +74,11 @@ curl -i "http://127.0.0.1:9180/apisix/admin/consumers" -X PUT -d '
 }'
 ```
 
-You will receive an `HTTP/1.1 201 OK` response if the consumer was created successfully.
+You will receive an `HTTP/1.1 201 Created` response if the consumer was created successfully.
 
 ### Enable Authentication
 
-Inheriting the route `getting-started-ip` from [Configure Routes](../configure-routes), we only need to use the `PATCH` method to add the `key-auth` plugin to the route:
+Inheriting the route `getting-started-ip` from [Configure Routes](./configure-routes.md), we only need to use the `PATCH` method to add the `key-auth` plugin to the route:
 
 ```shell
 curl -i "http://127.0.0.1:9180/apisix/admin/routes/getting-started-ip" -X PATCH -d '

@@ -15,15 +15,15 @@
 -- limitations under the License.
 --
 
-local yaml = require("tinyyaml")
+local yaml = require("lyaml")
 local profile = require("apisix.core.profile")
 local util = require("apisix.cli.util")
+local default_conf = require("apisix.cli.config")
 local dkjson = require("dkjson")
 
 local pairs = pairs
 local type = type
 local tonumber = tonumber
-local getmetatable = getmetatable
 local getenv = os.getenv
 local str_gmatch = string.gmatch
 local str_find = string.find
@@ -54,8 +54,59 @@ local function tab_is_array(t)
 end
 
 
+local function var_sub(val)
+    local err
+    local var_used = false
+    -- we use '${{var}}' because '$var' and '${var}' are taken
+    -- by Nginx
+    local new_val = val:gsub("%$%{%{%s*([%w_]+[%:%=]?.-)%s*%}%}", function(var)
+        local i, j = var:find("%:%=")
+        local default
+        if i and j then
+            default = var:sub(i + 2, #var)
+            default = default:gsub('^%s*(.-)%s*$', '%1')
+            var = var:sub(1, i - 1)
+        end
+
+        local v = getenv(var) or default
+        if v then
+            if not exported_vars then
+                exported_vars = {}
+            end
+
+            exported_vars[var] = v
+            var_used = true
+            return v
+        end
+
+        err = "failed to handle configuration: " ..
+              "can't find environment variable " .. var
+        return ""
+    end)
+    return new_val, var_used, err
+end
+
+
 local function resolve_conf_var(conf)
+    local new_keys = {}
     for key, val in pairs(conf) do
+        -- avoid re-iterating the table for already iterated key
+        if new_keys[key] then
+            goto continue
+        end
+        -- substitute environment variables from conf keys
+        if type(key) == "string" then
+            local new_key, _, err = var_sub(key)
+            if err then
+                return nil, err
+            end
+            if new_key ~= key then
+                new_keys[new_key] = "dummy" -- we only care about checking the key
+                conf.key = nil
+                conf[new_key] = val
+                key = new_key
+            end
+        end
         if type(val) == "table" then
             local ok, err = resolve_conf_var(val)
             if not ok then
@@ -63,34 +114,7 @@ local function resolve_conf_var(conf)
             end
 
         elseif type(val) == "string" then
-            local err
-            local var_used = false
-            -- we use '${{var}}' because '$var' and '${var}' are taken
-            -- by Nginx
-            local new_val = val:gsub("%$%{%{%s*([%w_]+[%:%=]?.-)%s*%}%}", function(var)
-                local i, j = var:find("%:%=")
-                local default
-                if i and j then
-                    default = var:sub(i + 2, #var)
-                    default = default:gsub('^%s*(.-)%s*$', '%1')
-                    var = var:sub(1, i - 1)
-                end
-
-                local v = getenv(var) or default
-                if v then
-                    if not exported_vars then
-                        exported_vars = {}
-                    end
-
-                    exported_vars[var] = v
-                    var_used = true
-                    return v
-                end
-
-                err = "failed to handle configuration: " ..
-                      "can't find environment variable " .. var
-                return ""
-            end)
+            local new_val, var_used, err = var_sub(val)
 
             if err then
                 return nil, err
@@ -108,6 +132,7 @@ local function resolve_conf_var(conf)
 
             conf[key] = new_val
         end
+        ::continue::
     end
 
     return true
@@ -132,14 +157,6 @@ local function replace_by_reserved_env_vars(conf)
 end
 
 
-local function tinyyaml_type(t)
-    local mt = getmetatable(t)
-    if mt then
-        return mt.__type
-    end
-end
-
-
 local function path_is_multi_type(path, type_val)
     if str_sub(path, 1, 14) == "nginx_config->" and
             (type_val == "number" or type_val == "string") then
@@ -150,7 +167,7 @@ local function path_is_multi_type(path, type_val)
         return true
     end
 
-    if path == "apisix->ssl->key_encrypt_salt" then
+    if path == "apisix->data_encryption->keyring" then
         return true
     end
 
@@ -163,7 +180,7 @@ local function merge_conf(base, new_tab, ppath)
 
     for key, val in pairs(new_tab) do
         if type(val) == "table" then
-            if tinyyaml_type(val) == "null" then
+            if val == yaml.null then
                 base[key] = nil
 
             elseif tab_is_array(val) then
@@ -212,18 +229,10 @@ function _M.read_yaml_conf(apisix_home)
         profile.apisix_home = apisix_home .. "/"
     end
 
-    local local_conf_path = profile:yaml_path("config-default")
-    local default_conf_yaml, err = util.read_file(local_conf_path)
-    if not default_conf_yaml then
-        return nil, err
+    local local_conf_path = profile:customized_yaml_path()
+    if not local_conf_path then
+        local_conf_path = profile:yaml_path("config")
     end
-
-    local default_conf = yaml.parse(default_conf_yaml)
-    if not default_conf then
-        return nil, "invalid config-default.yaml file"
-    end
-
-    local_conf_path = profile:yaml_path("config")
     local user_conf_yaml, err = util.read_file(local_conf_path)
     if not user_conf_yaml then
         return nil, err
@@ -238,7 +247,7 @@ function _M.read_yaml_conf(apisix_home)
     end
 
     if not is_empty_file then
-        local user_conf = yaml.parse(user_conf_yaml)
+        local user_conf = yaml.load(user_conf_yaml)
         if not user_conf then
             return nil, "invalid config.yaml file"
         end
@@ -264,25 +273,13 @@ function _M.read_yaml_conf(apisix_home)
             default_conf.apisix.enable_admin = true
 
         elseif default_conf.deployment.role == "data_plane" then
+            default_conf.etcd = default_conf.deployment.etcd
             if default_conf.deployment.role_data_plane.config_provider == "yaml" then
                 default_conf.deployment.config_provider = "yaml"
             elseif default_conf.deployment.role_data_plane.config_provider == "xds" then
                 default_conf.deployment.config_provider = "xds"
-            else
-                default_conf.etcd = default_conf.deployment.role_data_plane.control_plane
             end
             default_conf.apisix.enable_admin = false
-        end
-
-        if default_conf.etcd and default_conf.deployment.certs then
-            -- copy certs configuration to keep backward compatible
-            local certs = default_conf.deployment.certs
-            local etcd = default_conf.etcd
-            if not etcd.tls then
-                etcd.tls = {}
-            end
-            etcd.tls.cert = certs.cert
-            etcd.tls.key = certs.cert_key
         end
     end
 
@@ -290,7 +287,7 @@ function _M.read_yaml_conf(apisix_home)
         local apisix_conf_path = profile:yaml_path("apisix")
         local apisix_conf_yaml, _ = util.read_file(apisix_conf_path)
         if apisix_conf_yaml then
-            local apisix_conf = yaml.parse(apisix_conf_yaml)
+            local apisix_conf = yaml.load(apisix_conf_yaml)
             if apisix_conf then
                 local ok, err = resolve_conf_var(apisix_conf)
                 if not ok then

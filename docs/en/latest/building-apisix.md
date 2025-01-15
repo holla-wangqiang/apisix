@@ -37,25 +37,21 @@ If you are looking to quickly get started with APISIX, check out the other [inst
 
 :::note
 
-If you want to build and package APISIX for a specific platform, see [apisix-build-tools](https://github.com/api7/apisix-build-tools).
+To build an APISIX docker image from source code, see [build image from source code](https://apisix.apache.org/docs/docker/build/#build-an-image-from-customizedpatched-source-code).
+
+To build and package APISIX for a specific platform, see [apisix-build-tools](https://github.com/api7/apisix-build-tools) instead.
 
 :::
 
 ## Building APISIX from source
 
-Install dependencies using the script provided by APISIX:
+First of all, we need to specify the version `APISIX_VERSION` to be installed:
 
 ```shell
-curl https://raw.githubusercontent.com/apache/apisix/master/utils/install-dependencies.sh -sL | bash -
+APISIX_VERSION='3.11.0'
 ```
 
-Save the APISIX version to an environment variable to be used next:
-
-```shell
-APISIX_VERSION='3.3.0'
-```
-
-Clone the APISIX source code of this version into a new directory `apisix-APISIX_VERSION`:
+Then, you can run the following command to clone the APISIX source code from Github:
 
 ```shell
 git clone --depth 1 --branch ${APISIX_VERSION} https://github.com/apache/apisix.git apisix-${APISIX_VERSION}
@@ -63,7 +59,7 @@ git clone --depth 1 --branch ${APISIX_VERSION} https://github.com/apache/apisix.
 
 Alternatively, you can also download the source package from the [Downloads](https://apisix.apache.org/downloads/) page. Note that source packages here are not distributed with test cases.
 
-Next, navigate to the directory, install dependencies, and build APISIX. You should have [Rust](https://www.rust-lang.org) installed in your environment first before running `make deps`:
+Next, navigate to the directory, install dependencies, and build APISIX.
 
 ```shell
 cd apisix-${APISIX_VERSION}
@@ -71,7 +67,7 @@ make deps
 make install
 ```
 
-This will install the runtime-dependent Lua libraries and the `apisix` CLI tool.
+This will install the runtime-dependent Lua libraries and `apisix-runtime` the `apisix` CLI tool.
 
 :::note
 
@@ -201,7 +197,7 @@ apisix stop
 
 Some features of APISIX requires additional Nginx modules to be introduced into OpenResty.
 
-To use these features, you need to build a custom distribution of OpenResty (apisix-base). See [apisix-build-tools](https://github.com/api7/apisix-build-tools) for setting up your build environment and building it.
+To use these features, you need to build a custom distribution of OpenResty (apisix-runtime). See [apisix-build-tools](https://github.com/api7/apisix-build-tools) for setting up your build environment and building it.
 
 ## Running tests
 
@@ -258,12 +254,6 @@ For the error `Error unknown directive "lua_package_path" in /API_ASPIX/apisix/t
   export PATH=/usr/local/openresty/nginx/sbin:$PATH
   ```
 
-- macOS default installation path (view homebrew):
-
-  ```shell
-  export PATH=/usr/local/opt/openresty/nginx/sbin:$PATH
-  ```
-
 #### Running a specific test case
 
 To run a specific test case, use the command below:
@@ -272,4 +262,4 @@ To run a specific test case, use the command below:
 prove -Itest-nginx/lib -r t/plugin/openid-connect.t
 ```
 
-See [testing framework](https://github.com/apache/apisix/blob/master/docs/en/latest/internal/testing-framework.md) for more details.
+See [testing framework](./internal/testing-framework.md) for more details.

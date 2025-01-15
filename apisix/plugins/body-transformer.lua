@@ -21,17 +21,24 @@ local template          = require("resty.template")
 local ngx               = ngx
 local decode_base64     = ngx.decode_base64
 local req_set_body_data = ngx.req.set_body_data
+local req_get_uri_args  = ngx.req.get_uri_args
 local str_format        = string.format
+local decode_args       = ngx.decode_args
+local str_find          = core.string.find
 local type              = type
 local pcall             = pcall
 local pairs             = pairs
-
+local next              = next
+local multipart         = require("multipart")
+local setmetatable      = setmetatable
 
 local transform_schema = {
     type = "object",
     properties = {
-        input_format = { type = "string", enum = {"xml", "json"} },
+        input_format = { type = "string",
+                         enum = {"xml", "json", "encoded", "args", "plain", "multipart",}},
         template = { type = "string" },
+        template_is_base64 = { type = "boolean" },
     },
     required = {"template"},
 }
@@ -74,6 +81,10 @@ end
 
 local function remove_namespace(tbl)
     for k, v in pairs(tbl) do
+        if type(v) == "table" and next(v) == nil then
+            v = ""
+            tbl[k] = v
+        end
         if type(k) == "string" then
             local newk = k:match(".*:(.*)")
             if newk then
@@ -103,6 +114,16 @@ local decoders = {
     json = function(data)
         return core.json.decode(data)
     end,
+    encoded = function(data)
+        return decode_args(data)
+    end,
+    args = function()
+        return req_get_uri_args()
+    end,
+    multipart = function (data, content_type_header)
+        local res = multipart(data, content_type_header)
+        return res
+    end
 }
 
 
@@ -111,23 +132,36 @@ function _M.check_schema(conf)
 end
 
 
-local function transform(conf, body, typ, ctx)
+local function transform(conf, body, typ, ctx, request_method)
     local out = {}
-    if body then
+    local _multipart
+    local format = conf[typ].input_format
+    local ct = ctx.var.http_content_type
+    if typ == "response" then
+        ct = ngx.header.content_type
+    end
+    if (body or request_method == "GET") and format ~= "plain" then
         local err
-        local format = conf[typ].input_format
         if format then
-            out, err = decoders[format](body)
+            out, err = decoders[format](body, ct)
+            if format == "multipart" then
+                _multipart = out
+                out = out:get_all_with_arrays()
+            end
             if not out then
                 err = str_format("%s body decode: %s", typ, err)
                 core.log.error(err, ", body=", body)
                 return nil, 400, err
             end
+        else
+            core.log.warn("no input format to parse ", typ, " body")
         end
     end
 
     local text = conf[typ].template
-    text = decode_base64(text) or text
+    if (conf[typ].template_is_base64 or (format and format ~= "encoded" and format ~= "args")) then
+        text = decode_base64(text) or text
+    end
     local ok, render = pcall(template.compile, text)
     if not ok then
         local err = render
@@ -136,10 +170,14 @@ local function transform(conf, body, typ, ctx)
         return nil, 503, err
     end
 
-    out._ctx = ctx
-    out._body = body
-    out._escape_xml = escape_xml
-    out._escape_json = escape_json
+    setmetatable(out, {__index = {
+        _ctx = ctx,
+        _body = body,
+        _escape_xml = escape_xml,
+        _escape_json = escape_json,
+        _multipart = _multipart
+    }})
+
     local ok, render_out = pcall(render, out)
     if not ok then
         local err = str_format("%s template rendering: %s", typ, render_out)
@@ -152,12 +190,19 @@ local function transform(conf, body, typ, ctx)
 end
 
 
-local function set_input_format(conf, typ, ct)
+local function set_input_format(conf, typ, ct, method)
+    if method == "GET" then
+        conf[typ].input_format = "args"
+    end
     if conf[typ].input_format == nil and ct then
         if ct:find("text/xml") then
             conf[typ].input_format = "xml"
         elseif ct:find("application/json") then
             conf[typ].input_format = "json"
+        elseif str_find(ct:lower(), "application/x-www-form-urlencoded", nil, true) then
+            conf[typ].input_format = "encoded"
+        elseif str_find(ct:lower(), "multipart/", nil, true) then
+            conf[typ].input_format = "multipart"
         end
     end
 end
@@ -165,11 +210,12 @@ end
 
 function _M.rewrite(conf, ctx)
     if conf.request then
+        local request_method  = ngx.var.request_method
         conf = core.table.deepcopy(conf)
         ctx.body_transformer_conf = conf
         local body = core.request.get_body()
-        set_input_format(conf, "request", ctx.var.http_content_type)
-        local out, status, err = transform(conf, body, "request", ctx)
+        set_input_format(conf, "request", ctx.var.http_content_type, request_method)
+        local out, status, err = transform(conf, body, "request", ctx, request_method)
         if not out then
             return status, { message = err }
         end
@@ -192,6 +238,9 @@ end
 
 function _M.body_filter(_, ctx)
     local conf = ctx.body_transformer_conf
+    if not conf then
+        return
+    end
     if conf.response then
         local body = core.response.hold_body_chunk(ctx)
         if ngx.arg[2] == false and not body then

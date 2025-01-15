@@ -283,6 +283,7 @@ local health_checker = {
         {required = {"active"}},
         {required = {"active", "passive"}},
     },
+    additionalProperties = false,
 }
 
 
@@ -308,6 +309,7 @@ local nodes_schema = {
                         description = "port of node",
                         type = "integer",
                         minimum = 1,
+                        maximum = 65535
                     },
                     weight = {
                         description = "weight of node",
@@ -324,7 +326,7 @@ local nodes_schema = {
                         type = "object",
                     }
                 },
-                required = {"host", "port", "weight"},
+                required = {"host", "weight"},
             },
         }
     }
@@ -341,6 +343,7 @@ _M.discovery_nodes = {
                 description = "port of node",
                 type = "integer",
                 minimum = 1,
+                maximum = 65535
             },
             weight = {
                 description = "weight of node",
@@ -401,16 +404,10 @@ local upstream_schema = {
                 },
             },
             dependencies = {
-                client_cert = {
-                    required = {"client_key"},
-                    ["not"] = {required = {"client_cert_id"}}
-                },
-                client_key = {
-                    required = {"client_cert"},
-                    ["not"] = {required = {"client_cert_id"}}
-                },
+                client_cert = {required = {"client_key"}},
+                client_key = {required = {"client_cert"}},
                 client_cert_id = {
-                    ["not"] = {required = {"client_client", "client_key"}}
+                    ["not"] = {required = {"client_cert", "client_key"}}
                 }
             }
         },
@@ -501,7 +498,8 @@ local upstream_schema = {
     oneOf = {
         {required = {"nodes"}},
         {required = {"service_name", "discovery_type"}},
-    }
+    },
+    additionalProperties = false
 }
 
 -- TODO: add more nginx variable support
@@ -662,6 +660,7 @@ _M.route = {
             {required = {"script", "plugin_config_id"}},
         }
     },
+    additionalProperties = false,
 }
 
 
@@ -689,6 +688,7 @@ _M.service = {
             uniqueItems = true,
         },
     },
+    additionalProperties = false,
 }
 
 
@@ -707,10 +707,31 @@ _M.consumer = {
         desc = desc_def,
     },
     required = {"username"},
+    additionalProperties = false,
 }
 
+_M.credential = {
+    type = "object",
+    properties = {
+        id = id_schema,
+        plugins = {
+            type = "object",
+            maxProperties = 1,
+        },
+        labels = labels_def,
+        create_time = timestamp_def,
+        update_time = timestamp_def,
+        desc = desc_def,
+    },
+}
 
 _M.upstream = upstream_schema
+
+
+local secret_uri_schema = {
+    type = "string",
+    pattern = "^\\$(secret|env|ENV)://"
+}
 
 
 _M.ssl = {
@@ -728,14 +749,13 @@ _M.ssl = {
         cert = {
             oneOf = {
                 certificate_scheme,
-                -- TODO: uniformly define the schema of secret_uri
-                { type = "string", pattern = "^\\$(secret|env)://"}
+                secret_uri_schema
             }
         },
         key = {
             oneOf = {
                 private_key_schema,
-                { type = "string", pattern = "^\\$(secret|env)://"}
+                secret_uri_schema
             }
         },
         sni = {
@@ -752,11 +772,21 @@ _M.ssl = {
         },
         certs = {
             type = "array",
-            items = certificate_scheme,
+            items = {
+                oneOf = {
+                    certificate_scheme,
+                    secret_uri_schema
+                }
+            }
         },
         keys = {
             type = "array",
-            items = private_key_schema,
+            items = {
+                oneOf = {
+                    private_key_schema,
+                    secret_uri_schema
+                }
+            }
         },
         client = {
             type = "object",
@@ -779,10 +809,6 @@ _M.ssl = {
             },
             required = {"ca"},
         },
-        exptime = {
-            type = "integer",
-            minimum = 1588262400,  -- 2020/5/1 0:0:0
-        },
         labels = labels_def,
         status = {
             description = "ssl status, 1 to enable, 0 to disable",
@@ -790,8 +816,15 @@ _M.ssl = {
             enum = {1, 0},
             default = 1
         },
-        validity_end = timestamp_def,
-        validity_start = timestamp_def,
+        ssl_protocols = {
+            description = "set ssl protocols",
+            type = "array",
+            maxItems = 3,
+            uniqueItems = true,
+            items = {
+                enum = {"TLSv1.1", "TLSv1.2", "TLSv1.3"}
+            },
+        },
         create_time = timestamp_def,
         update_time = timestamp_def
     },
@@ -808,7 +841,8 @@ _M.ssl = {
             {required = {"snis", "key", "cert"}}
         }
     },
-    ["else"] = {required = {"key", "cert"}}
+    ["else"] = {required = {"key", "cert"}},
+    additionalProperties = false,
 }
 
 
@@ -825,6 +859,7 @@ _M.proto = {
         }
     },
     required = {"content"},
+    additionalProperties = false,
 }
 
 
@@ -837,6 +872,7 @@ _M.global_rule = {
         update_time = timestamp_def
     },
     required = {"id", "plugins"},
+    additionalProperties = false,
 }
 
 
@@ -870,6 +906,7 @@ local xrpc_protocol_schema = {
                 dependencies = {
                     name = {"conf"},
                 },
+                additionalProperties = false,
             },
         },
 
@@ -886,6 +923,7 @@ _M.stream_route = {
         create_time = timestamp_def,
         update_time = timestamp_def,
         remote_addr = remote_addr_def,
+        labels = labels_def, -- The ingress project need this field
         server_addr = {
             description = "server IP",
             type = "string",
@@ -894,6 +932,8 @@ _M.stream_route = {
         server_port = {
             description = "server port",
             type = "integer",
+            minimum = 1,
+            maximum = 65535
         },
         sni = {
             description = "server name indication",
@@ -902,9 +942,11 @@ _M.stream_route = {
         },
         upstream = upstream_schema,
         upstream_id = id_schema,
+        service_id = id_schema,
         plugins = plugins_schema,
         protocol = xrpc_protocol_schema,
-    }
+    },
+    additionalProperties = false,
 }
 
 
@@ -920,6 +962,7 @@ _M.plugins = {
             stream = {
                 type = "boolean"
             },
+            additionalProperties = false,
         },
         required = {"name"}
     }
@@ -929,6 +972,9 @@ _M.plugins = {
 _M.plugin_config = {
     type = "object",
     properties = {
+        name = {
+            type = "string",
+        },
         id = id_schema,
         desc = desc_def,
         plugins = plugins_schema,
@@ -937,6 +983,7 @@ _M.plugin_config = {
         update_time = timestamp_def
     },
     required = {"id", "plugins"},
+    additionalProperties = false,
 }
 
 
@@ -951,6 +998,7 @@ _M.consumer_group = {
         update_time = timestamp_def
     },
     required = {"id", "plugins"},
+    additionalProperties = false,
 }
 
 

@@ -67,12 +67,21 @@ Only one of `body` or `filters` can be configured.
 
 :::
 
-## Enabling the Plugin
+## Enable Plugin
 
 The example below enables the `response-rewrite` Plugin on a specific Route:
 
+:::note
+You can fetch the `admin_key` from `config.yaml` and save to an environment variable with the following command:
+
+```bash
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+```
+
+:::
+
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/test/index.html",
@@ -83,7 +92,7 @@ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
                 "set": {
                     "X-Server-id": 3,
                     "X-Server-status": "on",
-                    "X-Server-balancer_addr": "$balancer_ip:$balancer_port"
+                    "X-Server-balancer-addr": "$balancer_ip:$balancer_port"
                 }
             },
             "vars":[
@@ -107,7 +116,7 @@ Besides `set` operation, you can also `add` or `remove` response header like:
 ```json
 "headers": {
     "add": [
-        "X-Server-balancer_addr: $balancer_ip:$balancer_port"
+        "X-Server-balancer-addr: $balancer_ip:$balancer_port"
     ],
     "remove": [
         "X-TO-BE-REMOVED"
@@ -137,7 +146,7 @@ Transfer-Encoding: chunked
 Connection: keep-alive
 X-Server-id: 3
 X-Server-status: on
-X-Server-balancer_addr: 127.0.0.1:80
+X-Server-balancer-addr: 127.0.0.1:80
 
 {"code":"ok","message":"new json body"}
 ```
@@ -162,7 +171,7 @@ So, if you have configured the `response-rewrite` Plugin, it do a force overwrit
 The example below shows how you can replace a key in the response body. Here, the key X-Amzn-Trace-Id is replaced with X-Amzn-Trace-Id-Replace by configuring the filters attribute using regex:
 
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H "X-API-KEY: $admin_key" -X PUT -d '
 {
   "plugins":{
     "response-rewrite":{
@@ -170,7 +179,7 @@ curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
         "set": {
             "X-Server-id":3,
             "X-Server-status":"on",
-            "X-Server-balancer_addr":"$balancer_ip:$balancer_port"
+            "X-Server-balancer-addr":"$balancer_ip:$balancer_port"
         }
       },
       "filters":[
@@ -226,12 +235,12 @@ X-Server-id: 3
 
 ```
 
-## Disable Plugin
+## Delete Plugin
 
-To disable the `response-rewrite` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
+To remove the `response-rewrite` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/test/index.html",

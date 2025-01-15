@@ -32,6 +32,7 @@ local ngx_timer_every    = ngx.timer.every
 local log                = core.log
 local json_delay_encode  = core.json.delay_encode
 local ngx_worker_id      = ngx.worker.id
+local exiting            = ngx.worker.exiting
 local thread_spawn       = ngx.thread.spawn
 local thread_wait        = ngx.thread.wait
 local thread_kill        = ngx.thread.kill
@@ -44,6 +45,7 @@ local next               = next
 local all_services = core.table.new(0, 5)
 local default_service
 local default_weight
+local sort_type
 local skip_service_map = core.table.new(0, 1)
 local dump_params
 
@@ -197,21 +199,20 @@ local function get_opts(consul_server, is_catalog)
         port = consul_server.port,
         connect_timeout = consul_server.connect_timeout,
         read_timeout = consul_server.read_timeout,
+        default_args = {
+            token = consul_server.token,
+        }
     }
     if not consul_server.keepalive then
         return opts
     end
 
+    opts.default_args.wait = consul_server.wait_timeout --blocked wait!=0; unblocked by wait=0
+
     if is_catalog then
-        opts.default_args = {
-            wait = consul_server.wait_timeout, --blocked wait!=0; unblocked by wait=0
-            index = consul_server.catalog_index,
-        }
+        opts.default_args.index = consul_server.catalog_index
     else
-        opts.default_args = {
-            wait = consul_server.wait_timeout, --blocked wait!=0; unblocked by wait=0
-            index = consul_server.health_index,
-        }
+        opts.default_args.index = consul_server.health_index
     end
 
     return opts
@@ -277,7 +278,7 @@ end
 
 
 local function check_keepalive(consul_server, retry_delay)
-    if consul_server.keepalive then
+    if consul_server.keepalive and not exiting() then
         local ok, err = ngx_timer_at(0, _M.connect, consul_server, retry_delay)
         if not ok then
             log.error("create ngx_timer_at got error: ", err)
@@ -339,6 +340,25 @@ local function watch_result_is_valid(watch_type, index, catalog_index, health_in
 end
 
 
+local function combine_sort_nodes_cmp(left, right)
+    if left.host ~= right.host then
+        return left.host < right.host
+    end
+
+    return left.port < right.port
+end
+
+
+local function port_sort_nodes_cmp(left, right)
+    return left.port < right.port
+end
+
+
+local function host_sort_nodes_cmp(left, right)
+    return left.host < right.host
+end
+
+
 function _M.connect(premature, consul_server, retry_delay)
     if premature then
         return
@@ -396,6 +416,9 @@ function _M.connect(premature, consul_server, retry_delay)
         port = consul_server.port,
         connect_timeout = consul_server.connect_timeout,
         read_timeout = consul_server.read_timeout,
+        default_args = {
+            token = consul_server.token
+        }
     })
     local catalog_success, catalog_res, catalog_err = pcall(function()
         return consul_client:get(consul_server.consul_watch_catalog_url)
@@ -486,6 +509,7 @@ function _M.connect(premature, consul_server, retry_delay)
             if is_not_empty(result.body) then
                 -- add services to table
                 local nodes = up_services[service_name]
+                local nodes_uniq = {}
                 for _, node in ipairs(result.body) do
                     if not node.Service then
                         goto CONTINUE
@@ -497,12 +521,29 @@ function _M.connect(premature, consul_server, retry_delay)
                         nodes = core.table.new(1, 0)
                         up_services[service_name] = nodes
                     end
-                    -- add node to nodes table
-                    core.table.insert(nodes, {
-                        host = svc_address,
-                        port = tonumber(svc_port),
-                        weight = default_weight,
-                    })
+                    -- not store duplicate service IDs.
+                    local service_id = svc_address .. ":" .. svc_port
+                    if not nodes_uniq[service_id] then
+                        -- add node to nodes table
+                        core.table.insert(nodes, {
+                            host = svc_address,
+                            port = tonumber(svc_port),
+                            weight = default_weight,
+                        })
+                        nodes_uniq[service_id] = true
+                    end
+                end
+                if nodes then
+                    if sort_type == "port_sort" then
+                        core.table.sort(nodes, port_sort_nodes_cmp)
+
+                    elseif sort_type == "host_sort" then
+                        core.table.sort(nodes, host_sort_nodes_cmp)
+
+                    elseif sort_type == "combine_sort" then
+                        core.table.sort(nodes, combine_sort_nodes_cmp)
+
+                    end
                 end
                 up_services[service_name] = nodes
             end
@@ -512,7 +553,7 @@ function _M.connect(premature, consul_server, retry_delay)
         update_all_services(consul_server.consul_server_url, up_services)
 
         --update events
-        local post_ok, post_err = events.post(events_list._source,
+        local post_ok, post_err = events:post(events_list._source,
                 events_list.updating, all_services)
         if not post_ok then
             log.error("post_event failure with ", events_list._source,
@@ -545,6 +586,7 @@ local function format_consul_params(consul_conf)
         core.table.insert(consul_server_list, {
             host = host,
             port = port,
+            token = consul_conf.token,
             connect_timeout = consul_conf.timeout.connect,
             read_timeout = consul_conf.timeout.read,
             wait_timeout = consul_conf.timeout.wait,
@@ -575,19 +617,20 @@ function _M.init_worker()
         end
     end
 
-    events = require("resty.worker.events")
-    events_list = events.event_list(
+    events = require("apisix.events")
+    events_list = events:event_list(
             "discovery_consul_update_all_services",
             "updating"
     )
 
     if 0 ~= ngx_worker_id() then
-        events.register(discovery_consul_callback, events_list._source, events_list.updating)
+        events:register(discovery_consul_callback, events_list._source, events_list.updating)
         return
     end
 
     log.notice("consul_conf: ", json_delay_encode(consul_conf, true))
     default_weight = consul_conf.weight
+    sort_type = consul_conf.sort_type
     -- set default service, used when the server node cannot be found
     if consul_conf.default_service then
         default_service = consul_conf.default_service

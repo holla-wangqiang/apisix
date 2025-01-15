@@ -18,21 +18,32 @@
 
 . ./ci/common.sh
 install_dependencies() {
+    export_version_info
     export_or_prefix
 
     # install build & runtime deps
     yum install -y --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms \
-    wget tar gcc automake autoconf libtool make unzip git sudo openldap-devel hostname \
-    which ca-certificates openssl-devel
+    wget tar gcc gcc-c++ automake autoconf libtool make unzip git sudo openldap-devel hostname patch \
+    which ca-certificates pcre pcre-devel xz \
+    openssl-devel
+    yum install -y libyaml-devel
+    yum install -y --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms cpanminus perl
 
     # install newer curl
     yum makecache
     yum install -y libnghttp2-devel
     install_curl
 
-    # install openresty to make apisix's rpm test work
+    # install apisix-runtime to make apisix's rpm test work
     yum install -y yum-utils && yum-config-manager --add-repo https://openresty.org/package/centos/openresty.repo
-    yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel xz
+    yum install -y openresty-pcre-devel openresty-zlib-devel
+
+    install_apisix_runtime
+    curl -o /usr/local/openresty/openssl3/ssl/openssl.cnf \
+        https://raw.githubusercontent.com/api7/apisix-build-tools/apisix-runtime/${APISIX_RUNTIME}/conf/openssl3/openssl.cnf
+
+    # patch lua-resty-events
+    sed -i 's/log(ERR, "event worker failed: ", perr)/log(ngx.WARN, "event worker failed: ", perr)/' /usr/local/openresty/lualib/resty/events/worker.lua
 
     # install luarocks
     ./utils/linux-install-luarocks.sh
@@ -43,8 +54,11 @@ install_dependencies() {
     # install vault cli capabilities
     install_vault_cli
 
+    # install brotli
+    yum install -y cmake3
+    install_brotli
+
     # install test::nginx
-    yum install -y --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms cpanminus perl
     cpanm --notest Test::Nginx IPC::Run > build.log 2>&1 || (cat build.log && exit 1)
 
     # add go1.15 binary to the path
@@ -58,23 +72,18 @@ install_dependencies() {
     pushd t/grpc_server_example
 
     CGO_ENABLED=0 go build
-    ./grpc_server_example \
-        -grpc-address :50051 -grpcs-address :50052 -grpcs-mtls-address :50053 -grpc-http-address :50054 \
-        -crt ../certs/apisix.crt -key ../certs/apisix.key -ca ../certs/mtls_ca.crt \
-        > grpc_server_example.log 2>&1 || (cat grpc_server_example.log && exit 1)&
-
     popd
-    # wait for grpc_server_example to fully start
-    sleep 3
+
+    yum install -y iproute procps
+    start_grpc_server_example
+
+    start_sse_server_example
 
     # installing grpcurl
     install_grpcurl
 
     # install nodejs
     install_nodejs
-
-    # install rust
-    install_rust
 
     # grpc-web server && client
     pushd t/plugin/grpc-web
@@ -92,7 +101,7 @@ run_case() {
     make init
     set_coredns
     # run test cases
-    FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ -r ${TEST_FILE_SUB_DIR} | tee /tmp/test.result
+    FLUSH_ETCD=1 TEST_EVENTS_MODULE=$TEST_EVENTS_MODULE prove --timer -Itest-nginx/lib -I./ -r ${TEST_FILE_SUB_DIR} | tee /tmp/test.result
     rerun_flaky_tests /tmp/test.result
 }
 

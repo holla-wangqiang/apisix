@@ -279,9 +279,12 @@ function _M.rewrite(conf, ctx)
     local separator_escaped = false
     if conf.use_real_request_uri_unsafe then
         upstream_uri = ctx.var.real_request_uri
-    elseif conf.uri ~= nil then
+    end
+
+    if conf.uri ~= nil then
         separator_escaped = true
         upstream_uri = core.utils.resolve_var(conf.uri, ctx.var, escape_separator)
+
     elseif conf.regex_uri ~= nil then
         if not str_find(upstream_uri, "?") then
             separator_escaped = true
@@ -345,6 +348,8 @@ function _M.rewrite(conf, ctx)
         else
             ctx.var.upstream_uri = upstream_uri
         end
+    else
+        ctx.var.upstream_uri = upstream_uri
     end
 
     if conf.headers then
@@ -360,8 +365,11 @@ function _M.rewrite(conf, ctx)
             local val = core.utils.resolve_var_with_captures(hdr_op.add[i + 1],
                                             ctx.proxy_rewrite_regex_uri_captures)
             val = core.utils.resolve_var(val, ctx.var)
-            local header = hdr_op.add[i]
-            core.request.add_header(ctx, header, val)
+            -- A nil or empty table value will cause add_header function to throw an error.
+            if val then
+                local header = hdr_op.add[i]
+                core.request.add_header(ctx, header, val)
+            end
         end
 
         local field_cnt = #hdr_op.set

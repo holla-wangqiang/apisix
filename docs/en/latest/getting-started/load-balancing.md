@@ -17,8 +17,8 @@ In this tutorial, you will create a route with two upstream services and enable 
 
 ## Prerequisite(s)
 
-1. Complete [Get APISIX](../README) to install APISIX.
-2. Understand APISIX [Route and Upstream](../configure-routes#what-is-a-route).
+1. Complete [Get APISIX](./README.md) to install APISIX.
+2. Understand APISIX [Route and Upstream](./configure-routes.md#what-is-a-route).
 
 ## Enable Load Balancing
 
@@ -41,7 +41,7 @@ curl -i "http://127.0.0.1:9180/apisix/admin/routes" -X PUT -d '
 }'
 ```
 
-You will receive an `HTTP/1.1 201 OK` response if the route was created successfully.
+You will receive an `HTTP/1.1 201 Created` response if the route was created successfully.
 
 :::info
 
@@ -85,7 +85,7 @@ From `mock.api7.ai`:
 Let's generate 100 requests to test the load-balancing effect:
 
 ```shell
-hc=$(seq 100 | xargs -i curl "http://127.0.0.1:9080/headers" -sL | grep "httpbin" | wc -l); echo httpbin.org: $hc, mock.api7.ai: $((100 - $hc))
+hc=$(seq 100 | xargs -I {} curl "http://127.0.0.1:9080/headers" -sL | grep "httpbin" | wc -l); echo httpbin.org: $hc, mock.api7.ai: $((100 - $hc))
 ```
 
 The result shows the requests were distributed over the two services almost equally:

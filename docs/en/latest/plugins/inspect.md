@@ -85,25 +85,41 @@ The `info` is a hash table which contains below keys:
 | delay           | integer | False     | 3 | Time in seconds specifying how often to check the hooks file.                                       |
 | hooks_file           | string | False     | "/usr/local/apisix/plugin_inspect_hooks.lua"  | Lua file to define hooks, which could be a link file. Ensure only administrator could write this file, otherwise it may be a security risk. |
 
-## Enabling the Plugin
+## Enable Plugin
 
-Plugin is enabled by default (`conf/config-default.yaml`):
+Plugin is enabled by default:
 
-```yaml title="conf/config-default.yaml"
-plugins:
-    - inspect
-
-plugin_attr:
-  inspect:
-    delay: 3
-    hooks_file: "/usr/local/apisix/plugin_inspect_hooks.lua"
+```yaml title="apisix/cli/config.lua"
+local _M = {
+  plugins = {
+    "inspect",
+    ...
+  },
+  plugin_attr = {
+    inspect = {
+      delay = 3,
+      hooks_file = "/usr/local/apisix/plugin_inspect_hooks.lua"
+    },
+    ...
+  },
+  ...
+}
 ```
 
 ## Example usage
 
+:::note
+You can fetch the `admin_key` from `config.yaml` and save to an environment variable with the following command:
+
+```bash
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+```
+
+:::
+
 ```bash
 # create test route
-curl http://127.0.0.1:9180/apisix/admin/routes/test_limit_req -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/test_limit_req -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/get",
@@ -162,7 +178,7 @@ stack traceback:
 2022/09/01 00:55:52 [info] 2754534#2754534: *4070 [lua] resty_inspect_hooks.lua:6: conf_key=remote_addr, client: 127.0.0.1, server: _, request: "GET /get HTTP/1.1", host: "127.0.0.1:9080"
 ```
 
-## Disable plugin
+## Delete Plugin
 
 To remove the `inspect` Plugin, you can remove it from your configuration file (`conf/config.yaml`):
 

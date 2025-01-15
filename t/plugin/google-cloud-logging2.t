@@ -75,7 +75,7 @@ passed
 --- yaml_config
 apisix:
     data_encryption:
-        enable: true
+        enable_encrypt_fields: true
         keyring:
             - edd1c9f0985e76a2
 --- config
@@ -93,6 +93,7 @@ apisix:
                 plugins = {
                     ["google-cloud-logging"] = {
                         auth_config = {
+                            client_email = "email@apisix.iam.gserviceaccount.com",
                             private_key = [[
 -----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDDzrFwnA3EvYyR
@@ -124,7 +125,7 @@ kEJQcmfVew5mFXyxuEn3zA==
 -----END PRIVATE KEY-----]],
                             project_id = "apisix",
                             token_uri = "http://127.0.0.1:1980/google/logging/token",
-                            scopes = {
+                            scope = {
                                 "https://apisix.apache.org/logs:admin"
                             },
                             entries_uri = "http://127.0.0.1:1980/google/logging/entries",
@@ -211,6 +212,7 @@ YnwwDKc5vNzo0OU4StTRQbwgCnTZ3dmYiBFm8aGnvTxlE86D2nT07Q3BWhUdky6OGIox4MRLbiHz13NZ
                 plugins = {
                     ["google-cloud-logging"] = {
                         auth_config = {
+                            client_email = "email@apisix.iam.gserviceaccount.com",
                             private_key = [[
 -----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDDzrFwnA3EvYyR
@@ -242,7 +244,7 @@ kEJQcmfVew5mFXyxuEn3zA==
 -----END PRIVATE KEY-----]],
                             project_id = "apisix",
                             token_uri = "http://127.0.0.1:1980/google/logging/token",
-                            scopes = {
+                            scope = {
                                 "https://apisix.apache.org/logs:admin"
                             },
                             entries_uri = "http://127.0.0.1:1980/google/logging/entries",
@@ -350,6 +352,7 @@ the mock backend is hit
                 plugins = {
                     ["google-cloud-logging"] = {
                         auth_config = {
+                            client_email = "email@apisix.iam.gserviceaccount.com",
                             private_key = [[
 -----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDDzrFwnA3EvYyR
@@ -381,7 +384,7 @@ kEJQcmfVew5mFXyxuEn3zA==
 -----END PRIVATE KEY-----]],
                             project_id = "apisix",
                             token_uri = "http://127.0.0.1:1980/google/logging/token",
-                            scopes = {
+                            scope = {
                                 "https://apisix.apache.org/logs:admin"
                             },
                             entries_uri = "http://127.0.0.1:1980/google/logging/entries",

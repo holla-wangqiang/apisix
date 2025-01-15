@@ -23,12 +23,12 @@ In this tutorial, you will enable the `limit-count` plugin to set a rate limitin
 
 ## Prerequisite(s)
 
-1. Complete the [Get APISIX](../README) step to install APISIX first.
-2. Complete the [Configure Routes](../configure-routes#what-is-a-route) step.
+1. Complete the [Get APISIX](./README.md) step to install APISIX first.
+2. Complete the [Configure Routes](./configure-routes.md#what-is-a-route) step.
 
 ## Enable Rate Limiting
 
-The following route `getting-started-ip` is inherited from [Configure Routes](./configure-routes). You only need to use the `PATCH` method to add the `limit-count` plugin to the route:
+The following route `getting-started-ip` is inherited from [Configure Routes](./configure-routes.md). You only need to use the `PATCH` method to add the `limit-count` plugin to the route:
 
 ```shell
 curl -i "http://127.0.0.1:9180/apisix/admin/routes/getting-started-ip" -X PATCH -d '
@@ -43,14 +43,14 @@ curl -i "http://127.0.0.1:9180/apisix/admin/routes/getting-started-ip" -X PATCH 
 }'
 ```
 
-You will receive an `HTTP/1.1 201 OK` response if the plugin was added successfully. The above configuration limits the incoming requests to a maximum of 2 requests within 10 seconds.
+You will receive an `HTTP/1.1 201 Created` response if the plugin was added successfully. The above configuration limits the incoming requests to a maximum of 2 requests within 10 seconds.
 
 ### Validate
 
 Let's generate 100 simultaneous requests to see the rate limiting plugin in effect.
 
 ```shell
-count=$(seq 100 | xargs -i curl "http://127.0.0.1:9080/ip" -I -sL | grep "503" | wc -l); echo \"200\": $((100 - $count)), \"503\": $count
+count=$(seq 100 | xargs -I {} curl "http://127.0.0.1:9080/ip" -I -sL | grep "503" | wc -l); echo \"200\": $((100 - $count)), \"503\": $count
 ```
 
 The results are as expected: out of the 100 requests, 2 requests were sent successfully (status code `200`) while the others were rejected (status code `503`).

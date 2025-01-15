@@ -43,10 +43,10 @@ When the Plugin is enabled, APISIX will serialize the request context informatio
 | tenant_id | string | False | fake | Loki tenant ID. According to Loki's [multi-tenancy documentation](https://grafana.com/docs/loki/latest/operations/multi-tenancy/#multi-tenancy), its default value is set to the default value `fake` under single-tenancy. |
 | log_labels | object | False | {job = "apisix"} | Loki log label. [APISIX variables](../apisix-variable.md) and [Nginx variables](http://nginx.org/en/docs/varindex.html) can be used by prefixing the string with `$`, both individual and combined, such as `$host` or `$remote_addr:$remote_port`. |
 | ssl_verify        | boolean       | False    | true | When set to `true`, verifies the SSL certificate. |
-| timeout           | integer       | False    | 3000ms  | [1, 60000]ms   | Timeout for the authorization service HTTP call. |
+| timeout           | integer       | False    | 3000ms | Timeout for the Loki service HTTP call. Range from 1 to 60,000ms.  |
 | keepalive         | boolean       | False    | true | When set to `true`, keeps the connection alive for multiple requests. |
-| keepalive_timeout | integer       | False    | 60000ms | [1000, ...]ms  | Idle time after which the connection is closed. |
-| keepalive_pool    | integer       | False    | 5       | [1, ...]ms     | Connection pool limit. |
+| keepalive_timeout | integer       | False    | 60000ms | Idle time after which the connection is closed. Range greater than or equal than 1000ms.  |
+| keepalive_pool    | integer       | False    | 5       | Connection pool limit. Range greater than or equal than 1. |
 | log_format | object | False    |          | Log format declared as key value pairs in JSON format. Values only support strings. [APISIX variables](../apisix-variable.md) and [Nginx variables](http://nginx.org/en/docs/varindex.html) can be used by prefixing the string with `$`. |
 | include_req_body       | boolean | False    | false | When set to `true` includes the request body in the log. If the request body is too big to be kept in the memory, it can't be logged due to Nginx's limitations. |
 | include_req_body_expr  | array   | False    |  | Filter for when the `include_req_body` attribute is set to `true`. Request body is only logged when the expression set here evaluates to `true`. See [lua-resty-expr](https://github.com/api7/lua-resty-expr) for more. |
@@ -55,13 +55,55 @@ When the Plugin is enabled, APISIX will serialize the request context informatio
 
 This plugin supports using batch processors to aggregate and process entries (logs/data) in a batch. This avoids the need for frequently submitting the data. The batch processor submits data every `5` seconds or when the data in the queue reaches `1000`. See [Batch Processor](../batch-processor.md#configuration) for more information or setting your custom configuration.
 
+### Example of default log format
+
+```json
+{
+    "request": {
+        "headers": {
+            "connection": "close",
+            "host": "localhost",
+            "test-header": "only-for-test#1"
+        },
+        "method": "GET",
+        "uri": "/hello",
+        "url": "http://localhost:1984/hello",
+        "size": 89,
+        "querystring": {}
+    },
+    "client_ip": "127.0.0.1",
+    "start_time": 1704525701293,
+    "apisix_latency": 100.99994659424,
+    "response": {
+        "headers": {
+            "content-type": "text/plain",
+            "server": "APISIX/3.7.0",
+            "content-length": "12",
+            "connection": "close"
+        },
+        "status": 200,
+        "size": 118
+    },
+    "route_id": "1",
+    "loki_log_time": "1704525701293000000",
+    "upstream_latency": 5,
+    "latency": 105.99994659424,
+    "upstream": "127.0.0.1:1980",
+    "server": {
+        "hostname": "localhost",
+        "version": "3.7.0"
+    },
+    "service_id": ""
+}
+```
+
 ## Metadata
 
 You can also set the format of the logs by configuring the Plugin metadata. The following configurations are available:
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| log_format | object | False | {"host": "$host", "@timestamp": "$time_iso8601", "client_ip": "$remote_addr"} | Log format declared as key value pairs in JSON format. Values only support strings. [APISIX variables](../apisix-variable.md) and [Nginx variables](http://nginx.org/en/docs/varindex.html) can be used by prefixing the string with `$`. |
+| log_format | object | False |  | Log format declared as key value pairs in JSON format. Values only support strings. [APISIX variables](../apisix-variable.md) and [Nginx variables](http://nginx.org/en/docs/varindex.html) can be used by prefixing the string with `$`. |
 
 :::info IMPORTANT
 
@@ -71,8 +113,17 @@ Configuring the plugin metadata is global in scope. This means that it will take
 
 The example below shows how you can configure through the Admin API:
 
+:::note
+You can fetch the `admin_key` from `config.yaml` and save to an environment variable with the following command:
+
+```bash
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+```
+
+:::
+
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/plugin_metadata/loki-logger -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/plugin_metadata/loki-logger -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "log_format": {
         "host": "$host",
@@ -89,12 +140,12 @@ With this configuration, your logs would be formatted as shown below:
 {"host":"localhost","@timestamp":"2020-09-23T19:05:05-04:00","client_ip":"127.0.0.1","route_id":"1"}
 ```
 
-## Enabling the plugin
+## Enable plugin
 
 The example below shows how you can enable the `loki-logger` plugin on a specific Route:
 
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "plugins": {
         "loki-logger": {
@@ -124,7 +175,7 @@ curl -i http://127.0.0.1:9080/hello
 When you need to remove the `loki-logger` plugin, you can delete the corresponding JSON configuration with the following command and APISIX will automatically reload the relevant configuration without restarting the service:
 
 ```shell
-curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/hello",
@@ -150,7 +201,7 @@ Look at `error.log` for such a log.
 
 The error can be diagnosed based on the error code in the `failed to process entries: loki server returned status: 401, body: no org id` and the response body of the loki server.
 
-### Getting errors when QPS is high?
+### Getting errors when RPS is high?
 
 - Make sure to `keepalive` related configuration is set properly. See [Attributes](#attributes) for more information.
 - Check the logs in `error.log`, look for such a log.

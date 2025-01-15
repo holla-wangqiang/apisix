@@ -34,24 +34,38 @@ description: 本文介绍了 Apache APISIX Consumer Group 对象的概念及使�
 
 以下示例展示了如何创建消费者组并将其绑定到消费者中。
 
+创建一个共享相同限流配额的消费者组：
+
+:::note
+
+您可以这样从 `config.yaml` 中获取 `admin_key` 并存入环境变量：
+
+```bash
+admin_key=$(yq '.deployment.admin.admin_key[0].key' conf/config.yaml | sed 's/"//g')
+```
+
+:::
+
 ```shell
 curl http://127.0.0.1:9180/apisix/admin/consumer_groups/company_a \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+-H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "plugins": {
         "limit-count": {
             "count": 200,
             "time_window": 60,
             "rejected_code": 503,
-            "group": "$consumer_group_id"
+            "group": "grp_company_a"
         }
     }
 }'
 ```
 
+在消费者组中创建消费者：
+
 ```shell
 curl http://127.0.0.1:9180/apisix/admin/consumers \
--H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+-H "X-API-KEY: $admin_key" -X PUT -d '
 {
     "username": "jack",
     "plugins": {

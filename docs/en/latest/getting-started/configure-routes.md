@@ -28,7 +28,7 @@ An upstream is a set of target nodes with the same work. It defines a virtual ho
 
 ## Prerequisite(s)
 
-1. Complete [Get APISIX](../README) to install APISIX.
+1. Complete [Get APISIX](./README.md) to install APISIX.
 
 ## Create a Route
 
@@ -52,7 +52,7 @@ curl -i "http://127.0.0.1:9180/apisix/admin/routes" -X PUT -d '
 }'
 ```
 
-You will receive an `HTTP/1.1 201 OK` response if the route was created successfully.
+You will receive an `HTTP/1.1 201 Created` response if the route was created successfully.
 
 ## Validate
 
